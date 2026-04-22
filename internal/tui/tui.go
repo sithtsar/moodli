@@ -53,6 +53,11 @@ type model struct {
 	info           string
 	fetchingDetail string
 	err            error
+
+	// Caching
+	courseCache      map[string][]moodle.Section
+	participantCache map[string][]moodle.Contact
+	detailCache      map[string]moodle.Contact
 }
 
 func NewModel(client *moodle.Client) model {
@@ -62,11 +67,14 @@ func NewModel(client *moodle.Client) model {
 	l.Styles.Title = TitleStyle
 
 	return model{
-		client:  client,
-		state:   loadingState,
-		list:    l,
-		details: viewport.New(0, 0),
-		filter:  "inprogress",
+		client:           client,
+		state:            loadingState,
+		list:             l,
+		details:          viewport.New(0, 0),
+		filter:           "inprogress",
+		courseCache:      make(map[string][]moodle.Section),
+		participantCache: make(map[string][]moodle.Contact),
+		detailCache:      make(map[string]moodle.Contact),
 	}
 }
 
@@ -159,6 +167,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.info = ""
 
 	case []moodle.Section:
+		if m.selectedCourse.ID != "" {
+			m.courseCache[m.selectedCourse.ID] = msg
+		}
 		var items []list.Item
 		for _, s := range msg {
 			for _, mod := range s.Modules {
@@ -171,6 +182,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.info = ""
 
 	case []moodle.Contact:
+		if m.selectedCourse.ID != "" {
+			m.participantCache[m.selectedCourse.ID] = msg
+		}
 		items := make([]list.Item, len(msg))
 		for i, c := range msg {
 			items[i] = contactItem(c)
@@ -181,6 +195,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.info = ""
 
 	case moodle.Contact:
+		m.detailCache[msg.ID] = msg
 		m.fetchingDetail = ""
 		for i, item := range m.list.Items() {
 			if c, ok := item.(contactItem); ok && c.ID == msg.ID {
@@ -203,13 +218,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "esc", "h":
 			if m.state == moduleListState || m.state == participantListState {
-				m.state = loadingState
+				m.state = courseListState
 				return m, m.fetchCourses
 			}
 		case "enter", "l":
 			if m.state == courseListState {
 				if i, ok := m.list.SelectedItem().(courseItem); ok {
 					m.selectedCourse = moodle.Course(i)
+					if cached, ok := m.courseCache[i.ID]; ok {
+						return m.Update([]moodle.Section(cached))
+					}
 					m.state = loadingState
 					return m, m.fetchCourseContents(i.ID)
 				}
@@ -218,6 +236,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.state == courseListState {
 				if i, ok := m.list.SelectedItem().(courseItem); ok {
 					m.selectedCourse = moodle.Course(i)
+					if cached, ok := m.participantCache[i.ID]; ok {
+						return m.Update([]moodle.Contact(cached))
+					}
 					m.state = loadingState
 					return m, m.fetchParticipants(i.ID)
 				}
@@ -272,10 +293,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.list, cmd = m.list.Update(msg)
 	cmds = append(cmds, cmd)
 
-	// Update details pane based on selection
+	// Background Prefetching & Details Update
 	if m.state == courseListState {
 		if i, ok := m.list.SelectedItem().(courseItem); ok {
 			m.details.SetContent(fmt.Sprintf("Course: %s\nID: %s\nCategory: %s\n\n%s", i.Name, i.ID, i.Category, i.Summary))
+			if _, cached := m.courseCache[i.ID]; !cached {
+				cmds = append(cmds, m.fetchCourseContents(i.ID))
+			}
 		}
 	} else if m.state == moduleListState {
 		if i, ok := m.list.SelectedItem().(moduleItem); ok {
@@ -287,11 +311,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	} else if m.state == participantListState {
 		if i, ok := m.list.SelectedItem().(contactItem); ok {
-			if i.Email == "" && m.fetchingDetail != i.ID {
+			display := i
+			if cached, ok := m.detailCache[i.ID]; ok {
+				display = contactItem(cached)
+			} else if m.fetchingDetail != i.ID {
 				m.fetchingDetail = i.ID
 				cmds = append(cmds, m.fetchParticipantDetail(i.ID))
 			}
-			m.details.SetContent(fmt.Sprintf("Name: %s\nID: %s\nRole: %s\nEmail: %s", i.Name, i.ID, i.Role, i.Email))
+			m.details.SetContent(fmt.Sprintf("Name: %s\nID: %s\nRole: %s\nEmail: %s", display.Name, display.ID, display.Role, display.Email))
 		}
 	}
 
