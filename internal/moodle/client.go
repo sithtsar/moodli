@@ -571,20 +571,35 @@ func (c *Client) ResolveURL(ctx context.Context, moodleURL string) (string, erro
 }
 
 func (c *Client) FileMeta(ctx context.Context, rawURL string) (File, error) {
-	req, err := http.NewRequestWithContext(ctx, "HEAD", rawURL, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", rawURL, nil)
 	if err != nil {
 		return File{}, err
 	}
+	// Only request the first byte to get headers without downloading full content
+	req.Header.Set("Range", "bytes=0-0")
+
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		return File{}, err
 	}
 	defer resp.Body.Close()
 
+	size := resp.ContentLength
+	// If 206 Partial Content, Content-Range will contain total size: bytes 0-0/TOTAL_SIZE
+	if cr := resp.Header.Get("Content-Range"); cr != "" {
+		parts := strings.Split(cr, "/")
+		if len(parts) == 2 {
+			var total int64
+			if _, err := fmt.Sscanf(parts[1], "%d", &total); err == nil {
+				size = total
+			}
+		}
+	}
+
 	return File{
-		URL:         resp.Request.URL.String(),
+		URL:         rawURL,
 		ContentType: resp.Header.Get("Content-Type"),
-		Size:        resp.ContentLength,
+		Size:        size,
 	}, nil
 }
 

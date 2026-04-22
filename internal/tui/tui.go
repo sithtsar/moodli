@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os/exec"
 	"runtime"
+	"strings"
+	"time"
 
 	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/list"
@@ -53,6 +55,8 @@ type participantListMsg struct {
 	courseID     string
 	participants []moodle.Contact
 }
+
+type clearInfoMsg struct{}
 
 type model struct {
 	client         *moodle.Client
@@ -133,6 +137,12 @@ func (m model) fetchParticipantDetail(id string) tea.Cmd {
 		}
 		return contact
 	}
+}
+
+func (m model) clearInfo() tea.Cmd {
+	return tea.Tick(3*time.Second, func(t time.Time) tea.Msg {
+		return clearInfoMsg{}
+	})
 }
 
 func (m model) fetchFileMeta(url string) tea.Cmd {
@@ -246,6 +256,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case statusMsg:
 		m.info = string(msg)
+		return m, m.clearInfo()
+
+	case clearInfoMsg:
+		m.info = ""
 		return m, nil
 
 	case error:
@@ -308,6 +322,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if i, ok := m.list.SelectedItem().(moduleItem); ok && i.URL != "" {
 					m.info = "Opening resource..."
 					go openURL(i.URL)
+					return m, m.clearInfo()
 				}
 			}
 		}
@@ -369,6 +384,8 @@ func (m model) View() string {
 		return fmt.Sprintf("Error: %v\n\n[q] quit [esc] back", m.err)
 	}
 
+	breadcrumb := m.renderBreadcrumbs()
+
 	if m.state == loadingState {
 		ascii := `
                      _________________
@@ -382,11 +399,11 @@ func (m model) View() string {
                           ''
 `
 		s := fmt.Sprintf("%s\n\n  %s Fetching data from Moodle...\n\n", TitleStyle.Render(ascii), m.spinner.View())
-		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, s)
+		return breadcrumb + "\n" + lipgloss.Place(m.width, m.height-2, lipgloss.Center, lipgloss.Center, s)
 	}
 
-	leftPane := PaneStyle.Width(m.width/2 - 2).Height(m.height - 6).Render(m.list.View())
-	rightPane := PaneStyle.Width(m.width/2 - 2).Height(m.height - 6).Render(m.details.View())
+	leftPane := PaneStyle.Width(m.width/2 - 2).Height(m.height - 8).Render(m.list.View())
+	rightPane := PaneStyle.Width(m.width/2 - 2).Height(m.height - 8).Render(m.details.View())
 
 	mainView := lipgloss.JoinHorizontal(lipgloss.Top, leftPane, rightPane)
 
@@ -395,7 +412,39 @@ func (m model) View() string {
 		footer = "\n" + HeaderStyle.Render(m.info)
 	}
 	help := "\n [1-4] filter  [p] participants  [enter/l] view  [esc/h] back  [d] download  [o] open  [c] copy link  [q] quit"
-	return mainView + footer + help
+	return breadcrumb + "\n" + mainView + footer + help
+}
+
+func (m model) renderBreadcrumbs() string {
+	var crumbs []string
+
+	// Filter breadcrumb
+	filterName := "In Progress"
+	switch m.filter {
+	case "all":
+		filterName = "All"
+	case "past":
+		filterName = "Past"
+	case "favourites":
+		filterName = "Starred"
+	}
+	crumbs = append(crumbs, HeaderStyle.Render(" "+filterName+" "))
+
+	if m.state == moduleListState || m.state == participantListState {
+		crumbs = append(crumbs, lipgloss.NewStyle().Foreground(Grey).Render(" > "))
+		name := m.selectedCourse.Short
+		if name == "" {
+			name = m.selectedCourse.Name
+		}
+		crumbs = append(crumbs, HeaderStyle.Render(" "+name+" "))
+	}
+
+	if m.state == participantListState {
+		crumbs = append(crumbs, lipgloss.NewStyle().Foreground(Grey).Render(" > "))
+		crumbs = append(crumbs, HeaderStyle.Render(" Participants "))
+	}
+
+	return lipgloss.NewStyle().MarginBottom(1).Render(strings.Join(crumbs, ""))
 }
 
 func Start(client *moodle.Client) error {
