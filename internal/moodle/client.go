@@ -537,6 +537,20 @@ func (c *Client) Contacts(ctx context.Context, courseID string) ([]Contact, erro
 	return contacts, nil
 }
 
+func (c *Client) ResolveURL(ctx context.Context, moodleURL string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", moodleURL, nil)
+	if err != nil {
+		return "", err
+	}
+	// We use the HTTP client which has our Jar, so it will handle redirects with session
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	return resp.Request.URL.String(), nil
+}
+
 func (c *Client) Assignment(ctx context.Context, idOrURL string) (Assignment, error) {
 	ref := idOrURL
 	if !strings.Contains(idOrURL, "/") {

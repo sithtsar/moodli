@@ -95,6 +95,32 @@ func (c *Client) ExportCourse(ctx context.Context, courseID, outDir string, onPr
 	return export, nil
 }
 
+func (c *Client) DownloadModule(ctx context.Context, mod Module, outDir string) error {
+	root := filepath.Join(outDir, SafeName(mod.Name))
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return err
+	}
+
+	if mod.Type == "resource" || mod.Type == "file" {
+		items := mod.Contents
+		if len(items) == 0 {
+			items = []File{{Name: mod.Name, URL: mod.URL}}
+		}
+		for _, f := range items {
+			_, _, err := c.download(ctx, f.URL, root, f.Name, nil)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if mod.Type == "assign" {
+		_, err := c.ExportAssignment(ctx, mod.URL, root, nil)
+		return err
+	}
+	return nil
+}
+
 func (c *Client) ExportAssignment(ctx context.Context, idOrURL, outDir string, onProgress func(DownloadProgress)) (Assignment, error) {
 	assignment, err := c.Assignment(ctx, idOrURL)
 	if err != nil {

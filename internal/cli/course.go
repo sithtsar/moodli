@@ -136,6 +136,7 @@ func (a *app) courseCmd() *cobra.Command {
 		Short: "List all external links (URLs) in a course",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			resolve, _ := cmd.Flags().GetBool("resolve")
 			client, _, err := a.moodleClient()
 			if err != nil {
 				return err
@@ -147,13 +148,21 @@ func (a *app) courseCmd() *cobra.Command {
 			for _, s := range sections {
 				for _, m := range s.Modules {
 					if m.Type == "url" && m.URL != "" {
-						fmt.Println(m.URL)
+						u := m.URL
+						if resolve {
+							resolved, err := client.ResolveURL(cmd.Context(), u)
+							if err == nil {
+								u = resolved
+							}
+						}
+						fmt.Println(u)
 					}
 				}
 			}
 			return nil
 		},
 	}
+	links.Flags().Bool("resolve", true, "follow redirects to get the final destination URL")
 
 	cmd.AddCommand(contents, fetch, links)
 	return cmd

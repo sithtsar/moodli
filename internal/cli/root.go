@@ -10,6 +10,7 @@ import (
 	"github.com/sithtsar/moodli/internal/config"
 	"github.com/sithtsar/moodli/internal/moodle"
 	"github.com/sithtsar/moodli/internal/output"
+	"github.com/sithtsar/moodli/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -29,6 +30,13 @@ func Execute() error {
 		SilenceErrors: true,
 		Args:          cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				client, _, err := a.moodleClient()
+				if err != nil {
+					return fmt.Errorf("auth required: run 'moodli auth login'")
+				}
+				return tui.Start(client)
+			}
 			if len(args) == 1 && looksLikeURL(args[0]) {
 				return a.routeURL(cmd.Context(), args[0])
 			}
