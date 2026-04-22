@@ -1,94 +1,92 @@
-# moodli 🎓
+# moodli
 
-> A high-performance Moodle scraper and TUI for modern terminal enthusiasts.
+moodli is a high-performance Moodle extraction utility and interactive terminal interface designed for academic data management. It provides a robust framework for both manual course navigation and programmatic data ingestion by automated agents.
 
-**⚠️ WARNING: Early Alpha Version**
-This project is in early development. APIs, CLI commands, and TUI layouts are subject to change. Use with caution.
+## System Architecture
 
-## 🚀 Features
+The following diagram illustrates the interaction between the moodli client, the Moodle web interface, and the local filesystem/TUI.
 
-- **Blazing Fast**: Concurrent scraping and downloads.
-- **Interactive TUI**: Navigate courses, modules, and participants with ease.
-- **Smart Resolve**: Automatically follows redirects for resources (Google Drive, etc.).
-- **Metadata Preview**: Instant file size and type preview via lazy-loading.
-- **Agent-Friendly CLI**: Designed for both humans and LLM agents with clean JSON output.
-- **Sunset Dark Theme**: Beautiful neon orange and dark grey interface.
+```mermaid
+graph TD
+    User[User/Agent] --> CLI[CLI Entry Point]
+    CLI --> TUI[Interactive TUI]
+    CLI --> API[Programmatic API / JSON]
+    TUI --> Client[Moodle Client]
+    API --> Client
+    Client --> Session[Session Manager]
+    Session --> Moodle[(Moodle Server)]
+    Client --> FS[Local Filesystem]
+    Client --> Open[System Default Viewer]
+```
 
-## 🛠 Installation
+## Core Capabilities
+
+- **Concurrent Extraction**: Utilizes a pooled connection model for high-speed module and course data retrieval.
+- **Interactive Terminal Interface**: A dual-pane state machine built on the Bubble Tea framework for efficient course navigation.
+- **Automated URL Resolution**: Transparently follows internal Moodle redirects to identify the terminal destination of resources (e.g., Google Drive, external repositories).
+- **Asynchronous Metadata Retreival**: Implements lazy-loading of file attributes (size, MIME type) via partial HTTP GET requests to minimize bandwidth overhead.
+- **Programmatic Integration**: Features a clean JSON output mode for seamless integration with Large Language Model (LLM) agents and automated pipelines.
+
+## Installation
+
+Moodli is distributed as a Go binary. Ensure you have Go 1.21 or later installed.
 
 ```bash
 go install github.com/sithtsar/moodli/cmd/moodli@latest
 ```
 
-## 🖥 TUI Usage
+## Operation Modes
 
-Simply run `moodli` without arguments to enter the interactive mode.
+### Interactive Mode (TUI)
+
+Executing the binary without arguments initializes the interactive terminal user interface.
 
 ```bash
 moodli
 ```
 
-### Keybindings
+#### Navigation and Control
 
-- `1-4`: Filter courses (In Progress, All, Past, Starred).
-- `enter / l`: Enter course/module.
-- `esc / h`: Go back.
-- `p`: View participants.
-- `d`: Download course or module.
-- `o`: Open resource in system default viewer.
-- `c`: Copy resolved link to clipboard.
-- `q`: Quit.
+- **Filters**: Use keys `1` through `4` to filter by course status (In Progress, All, Past, Starred).
+- **Navigation**: `enter` or `l` to descend into a course or module; `esc` or `h` to ascend the hierarchy.
+- **Participants**: `p` to view course member metadata.
+- **Download**: `d` to export the selected course or module to the local filesystem.
+- **Execution**: `o` to invoke the system default application for the selected resource.
+- **Clipboard**: `c` to resolve and copy resource URLs.
 
-## 🤖 CLI Usage (Programmatic)
+### Command Line Interface (CLI)
 
-`moodli` is designed to be used programmatically by LLM agents or scripts. Use the `--json` flag for machine-readable output.
+For scripted or programmatic usage, moodli provides a structured CLI. Use the `--json` flag to return machine-readable data.
 
-### Common Commands
+#### Authentication
+```bash
+moodli auth login          # Initialize session
+moodli auth status         # Validate current credentials
+```
 
-- **Authentication**:
-  ```bash
-  moodli auth login          # Interactive login
-  moodli auth status         # Check current session
-  ```
+#### Course Management
+```bash
+moodli courses --json                      # Retrieve machine-readable course list
+moodli course contents <COURSE_ID>         # Enumerate sections and modules
+moodli course fetch <COURSE_ID>            # Execute recursive course download
+moodli course participants <COURSE_ID>     # Extract participant metadata
+```
 
-- **Listing Courses**:
-  ```bash
-  moodli courses             # List courses (default: in-progress)
-  moodli courses --json      # machine-readable list
-  ```
-
-- **Course Content**:
-  ```bash
-  moodli course contents <ID>       # List sections and modules
-  moodli course fetch <ID>          # Download all course content
-  moodli course links <ID>          # Extract all external URLs
-  moodli course participants <ID>   # List course members
-  ```
-
-- **Assignments**:
-  ```bash
-  moodli assignments         # List upcoming assignments across all courses
-  moodli assignment <ID>     # Show details for a specific assignment
-  ```
-
-### Smart Routing
-You can pass any Moodle URL directly to `moodli` to quickly fetch details:
+#### URL Routing
+Moodli supports direct URL ingestion to bypass the navigation hierarchy:
 ```bash
 moodli https://moodle.iitb.ac.in/course/view.php?id=1234
 ```
 
-## 🗺 Roadmap & Planned Features
+## Roadmap
 
-- [ ] **Assignment Uploads**: Submit assignments directly from the CLI/TUI.
-- [ ] **NotebookLM Integration**: Deep integration for exporting structured course content for LLM ingestion.
-- [ ] **Bulk Downloads**: Optimized batch downloading for entire semesters.
-- [ ] **Search**: Global search across all courses and modules.
-- [ ] **Notifications**: Desktop notifications for new assignments or grades.
+The project is currently in an early development phase. The following features are scheduled for future release:
 
-## 📜 License
+- **Electronic Submission**: Support for submitting assignments directly through the CLI and TUI.
+- **NotebookLM Integration**: Specialized export formats optimized for Google NotebookLM and other RAG-based systems.
+- **Global Search**: Indexed search across the entire course and module catalog.
+- **Event Monitoring**: Real-time notifications for upcoming deadlines and grading updates.
 
-This project is licensed under the **MIT License**. See `LICENSE` for details.
+## License
 
----
-
-Built with 🧡 using `charmbracelet/bubbletea` and `go`.
+This project is licensed under the MIT License. See the LICENSE file for full legal text.
