@@ -336,11 +336,15 @@ func (m model) View() string {
 
 	if m.state == loadingState {
 		ascii := `
-   __  ___                ____ 
-  /  |/  /___  ___  ___  / / / 
- / /|_/ / __ \/ __ \/ _ \/ / /  
-/ /  / / /_/ / /_/ /  __/ / /   
-/_/  /_/\____/\____/\___/_/_/    
+                     _________________
+                    /                /
+                   /    moodli      /
+                  /________________/
+                  \       ||       /
+                   \______||______/
+                          ||
+                          ||
+                          ''
 `
 		s := fmt.Sprintf("%s\n\n  %s Fetching data from Moodle...\n\n", TitleStyle.Render(ascii), m.spinner.View())
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, s)
