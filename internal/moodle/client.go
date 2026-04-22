@@ -463,6 +463,17 @@ func (c *Client) Participants(ctx context.Context, courseID string) ([]Contact, 
 	return ParseParticipants(body, c.BaseURL.String()), nil
 }
 
+func (c *Client) ParticipantDetail(ctx context.Context, userID, courseID string) (Contact, error) {
+	path := fmt.Sprintf("/user/view.php?id=%s&course=%s", url.QueryEscape(userID), url.QueryEscape(courseID))
+	_, body, err := c.get(ctx, path)
+	if err != nil {
+		return Contact{}, err
+	}
+	contact := ParseContactDetail(body)
+	contact.ID = userID
+	return contact, nil
+}
+
 func (c *Client) CourseContents(ctx context.Context, courseID string) (Course, []Section, error) {
 	path := "/course/view.php?id=" + url.QueryEscape(courseID)
 	_, body, err := c.get(ctx, path)

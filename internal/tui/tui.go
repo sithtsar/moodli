@@ -51,6 +51,7 @@ type model struct {
 	selectedCourse moodle.Course
 	filter         string
 	info           string
+	fetchingDetail string
 	err            error
 }
 
@@ -179,6 +180,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state = participantListState
 		m.info = ""
 
+	case moodle.Contact:
+		m.fetchingDetail = ""
+		for i, item := range m.list.Items() {
+			if c, ok := item.(contactItem); ok && c.ID == msg.ID {
+				m.list.SetItem(i, contactItem(msg))
+				break
+			}
+		}
+
 	case statusMsg:
 		m.info = string(msg)
 		return m, nil
@@ -277,11 +287,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	} else if m.state == participantListState {
 		if i, ok := m.list.SelectedItem().(contactItem); ok {
+			if i.Email == "" && m.fetchingDetail != i.ID {
+				m.fetchingDetail = i.ID
+				cmds = append(cmds, m.fetchParticipantDetail(i.ID))
+			}
 			m.details.SetContent(fmt.Sprintf("Name: %s\nID: %s\nRole: %s\nEmail: %s", i.Name, i.ID, i.Role, i.Email))
 		}
 	}
 
 	return m, tea.Batch(cmds...)
+}
+
+func (m model) fetchParticipantDetail(id string) tea.Cmd {
+	return func() tea.Msg {
+		contact, err := m.client.ParticipantDetail(context.Background(), id, m.selectedCourse.ID)
+		if err != nil {
+			return err
+		}
+		return contact
+	}
 }
 
 func (m *model) updateListTitle() {
