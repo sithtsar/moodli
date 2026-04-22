@@ -65,12 +65,6 @@ type model struct {
 	info           string
 	fetchingDetail string
 	err            error
-
-	// Caching
-	lastCourses      []moodle.Course
-	courseCache      map[string][]moodle.Section
-	participantCache map[string][]moodle.Contact
-	detailCache      map[string]moodle.Contact
 }
 
 func NewModel(client *moodle.Client) model {
@@ -80,19 +74,16 @@ func NewModel(client *moodle.Client) model {
 	l.Styles.Title = TitleStyle
 
 	s := spinner.New()
-	s.Spinner = spinner.Dot
+	s.Spinner = spinner.Points
 	s.Style = lipgloss.NewStyle().Foreground(Orange)
 
 	return model{
-		client:           client,
-		state:            loadingState,
-		list:             l,
-		details:          viewport.New(0, 0),
-		spinner:          s,
-		filter:           "inprogress",
-		courseCache:      make(map[string][]moodle.Section),
-		participantCache: make(map[string][]moodle.Contact),
-		detailCache:      make(map[string]moodle.Contact),
+		client:  client,
+		state:   loadingState,
+		list:    l,
+		details: viewport.New(0, 0),
+		spinner: s,
+		filter:  "inprogress",
 	}
 }
 
@@ -125,6 +116,16 @@ func (m model) fetchParticipants(id string) tea.Cmd {
 			return err
 		}
 		return participantListMsg{courseID: id, participants: contacts}
+	}
+}
+
+func (m model) fetchParticipantDetail(id string) tea.Cmd {
+	return func() tea.Msg {
+		contact, err := m.client.ParticipantDetail(context.Background(), id, m.selectedCourse.ID)
+		if err != nil {
+			return err
+		}
+		return contact
 	}
 }
 
@@ -169,7 +170,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		paneWidth := m.width / 2
 		paneHeight := m.height - 6
-
 		m.list.SetSize(paneWidth-4, paneHeight)
 		m.details.Width = paneWidth - 4
 		m.details.Height = paneHeight
@@ -180,7 +180,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case []moodle.Course:
-		m.lastCourses = msg
 		items := make([]list.Item, len(msg))
 		for i, c := range msg {
 			items[i] = courseItem(c)
@@ -191,9 +190,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.info = ""
 
 	case courseContentMsg:
-		m.courseCache[msg.courseID] = msg.sections
-		// Only transition if we are actually waiting for THIS course's contents
-		if m.state == loadingState && m.selectedCourse.ID == msg.courseID {
+		if m.selectedCourse.ID == msg.courseID {
 			var items []list.Item
 			for _, s := range msg.sections {
 				for _, mod := range s.Modules {
@@ -207,9 +204,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case participantListMsg:
-		m.participantCache[msg.courseID] = msg.participants
-		// Only transition if we are actually waiting for THIS course's participants
-		if m.state == loadingState && m.selectedCourse.ID == msg.courseID {
+		if m.selectedCourse.ID == msg.courseID {
 			items := make([]list.Item, len(msg.participants))
 			for i, c := range msg.participants {
 				items[i] = contactItem(c)
@@ -221,7 +216,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case moodle.Contact:
-		m.detailCache[msg.ID] = msg
 		m.fetchingDetail = ""
 		for i, item := range m.list.Items() {
 			if c, ok := item.(contactItem); ok && c.ID == msg.ID {
@@ -235,10 +229,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case error:
-		// If it's a prefetch error, don't show it unless we're in loading state for that course
-		if m.state == loadingState {
-			m.err = msg
-		}
+		m.err = msg
 		return m, nil
 
 	case tea.KeyMsg:
@@ -246,11 +237,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		case "esc", "h":
-			if m.state == moduleListState || m.state == participantListState {
-				if m.lastCourses != nil {
-					// Use internal Update to restore view instantly
-					return m.Update(m.lastCourses)
-				}
+			if m.state != courseListState {
 				m.state = loadingState
 				return m, m.fetchCourses
 			}
@@ -258,9 +245,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.state == courseListState {
 				if i, ok := m.list.SelectedItem().(courseItem); ok {
 					m.selectedCourse = moodle.Course(i)
-					if cached, ok := m.courseCache[i.ID]; ok {
-						return m.Update(courseContentMsg{courseID: i.ID, sections: cached})
-					}
 					m.state = loadingState
 					return m, m.fetchCourseContents(i.ID)
 				}
@@ -269,9 +253,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.state == courseListState {
 				if i, ok := m.list.SelectedItem().(courseItem); ok {
 					m.selectedCourse = moodle.Course(i)
-					if cached, ok := m.participantCache[i.ID]; ok {
-						return m.Update(participantListMsg{courseID: i.ID, participants: cached})
-					}
 					m.state = loadingState
 					return m, m.fetchParticipants(i.ID)
 				}
@@ -309,13 +290,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.list, cmd = m.list.Update(msg)
 	cmds = append(cmds, cmd)
 
-	// Background Prefetching & Details Update
+	// Update details pane
 	if m.state == courseListState {
 		if i, ok := m.list.SelectedItem().(courseItem); ok {
 			m.details.SetContent(fmt.Sprintf("Course: %s\nID: %s\nCategory: %s\n\n%s", i.Name, i.ID, i.Category, i.Summary))
-			if _, cached := m.courseCache[i.ID]; !cached {
-				cmds = append(cmds, m.fetchCourseContents(i.ID))
-			}
 		}
 	} else if m.state == moduleListState {
 		if i, ok := m.list.SelectedItem().(moduleItem); ok {
@@ -327,28 +305,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	} else if m.state == participantListState {
 		if i, ok := m.list.SelectedItem().(contactItem); ok {
-			display := i
-			if cached, ok := m.detailCache[i.ID]; ok {
-				display = contactItem(cached)
-			} else if m.fetchingDetail != i.ID {
+			if i.Email == "" && m.fetchingDetail != i.ID {
 				m.fetchingDetail = i.ID
 				cmds = append(cmds, m.fetchParticipantDetail(i.ID))
 			}
-			m.details.SetContent(fmt.Sprintf("Name: %s\nID: %s\nRole: %s\nEmail: %s", display.Name, display.ID, display.Role, display.Email))
+			m.details.SetContent(fmt.Sprintf("Name: %s\nID: %s\nRole: %s\nEmail: %s", i.Name, i.ID, i.Role, i.Email))
 		}
 	}
 
 	return m, tea.Batch(cmds...)
-}
-
-func (m model) fetchParticipantDetail(id string) tea.Cmd {
-	return func() tea.Msg {
-		contact, err := m.client.ParticipantDetail(context.Background(), id, m.selectedCourse.ID)
-		if err != nil {
-			return err
-		}
-		return contact
-	}
 }
 
 func (m *model) updateListTitle() {
@@ -366,11 +331,18 @@ func (m *model) updateListTitle() {
 
 func (m model) View() string {
 	if m.err != nil {
-		return fmt.Sprintf("Error: %v", m.err)
+		return fmt.Sprintf("Error: %v\n\n[q] quit [esc] back", m.err)
 	}
 
 	if m.state == loadingState {
-		s := fmt.Sprintf("\n\n  %s Loading...\n\n", m.spinner.View())
+		ascii := `
+   __  ___                ____ 
+  /  |/  /___  ___  ___  / / / 
+ / /|_/ / __ \/ __ \/ _ \/ / /  
+/ /  / / /_/ / /_/ /  __/ / /   
+/_/  /_/\____/\____/\___/_/_/    
+`
+		s := fmt.Sprintf("%s\n\n  %s Fetching data from Moodle...\n\n", TitleStyle.Render(ascii), m.spinner.View())
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, s)
 	}
 
@@ -383,9 +355,7 @@ func (m model) View() string {
 	if m.info != "" {
 		footer = "\n" + HeaderStyle.Render(m.info)
 	}
-	
 	help := "\n [1-4] filter  [p] participants  [enter/l] view  [esc/h] back  [d] download  [c] copy link  [q] quit"
-	
 	return mainView + footer + help
 }
 
