@@ -1,0 +1,17 @@
+package output
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+)
+
+func JSON(w io.Writer, v any) error {
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(v)
+}
+
+func Text(w io.Writer, format string, args ...any) {
+	fmt.Fprintf(w, format, args...)
+}
