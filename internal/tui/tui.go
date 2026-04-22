@@ -6,6 +6,7 @@ import (
 
 	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -58,6 +59,7 @@ type model struct {
 	height         int
 	list           list.Model
 	details        viewport.Model
+	spinner        spinner.Model
 	selectedCourse moodle.Course
 	filter         string
 	info           string
@@ -65,6 +67,7 @@ type model struct {
 	err            error
 
 	// Caching
+	lastCourses      []moodle.Course
 	courseCache      map[string][]moodle.Section
 	participantCache map[string][]moodle.Contact
 	detailCache      map[string]moodle.Contact
@@ -76,11 +79,16 @@ func NewModel(client *moodle.Client) model {
 	l.SetShowStatusBar(false)
 	l.Styles.Title = TitleStyle
 
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	s.Style = lipgloss.NewStyle().Foreground(Orange)
+
 	return model{
 		client:           client,
 		state:            loadingState,
 		list:             l,
 		details:          viewport.New(0, 0),
+		spinner:          s,
 		filter:           "inprogress",
 		courseCache:      make(map[string][]moodle.Section),
 		participantCache: make(map[string][]moodle.Contact),
@@ -89,7 +97,7 @@ func NewModel(client *moodle.Client) model {
 }
 
 func (m model) Init() tea.Cmd {
-	return m.fetchCourses
+	return tea.Batch(m.fetchCourses, m.spinner.Tick)
 }
 
 func (m model) fetchCourses() tea.Msg {
@@ -166,7 +174,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.details.Width = paneWidth - 4
 		m.details.Height = paneHeight
 
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
+
 	case []moodle.Course:
+		m.lastCourses = msg
 		items := make([]list.Item, len(msg))
 		for i, c := range msg {
 			items[i] = courseItem(c)
@@ -233,6 +247,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "esc", "h":
 			if m.state == moduleListState || m.state == participantListState {
+				if m.lastCourses != nil {
+					// Use internal Update to restore view instantly
+					return m.Update(m.lastCourses)
+				}
 				m.state = loadingState
 				return m, m.fetchCourses
 			}
@@ -258,27 +276,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, m.fetchParticipants(i.ID)
 				}
 			}
-		case "1":
+		case "1", "2", "3", "4":
 			if m.state == courseListState {
-				m.filter = "inprogress"
-				m.state = loadingState
-				return m, m.fetchCourses
-			}
-		case "2":
-			if m.state == courseListState {
-				m.filter = "all"
-				m.state = loadingState
-				return m, m.fetchCourses
-			}
-		case "3":
-			if m.state == courseListState {
-				m.filter = "past"
-				m.state = loadingState
-				return m, m.fetchCourses
-			}
-		case "4":
-			if m.state == courseListState {
-				m.filter = "favourites"
+				filters := map[string]string{"1": "inprogress", "2": "all", "3": "past", "4": "favourites"}
+				m.filter = filters[msg.String()]
 				m.state = loadingState
 				return m, m.fetchCourses
 			}
@@ -369,7 +370,8 @@ func (m model) View() string {
 	}
 
 	if m.state == loadingState {
-		return "Loading..."
+		s := fmt.Sprintf("\n\n  %s Loading...\n\n", m.spinner.View())
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, s)
 	}
 
 	leftPane := PaneStyle.Width(m.width/2 - 2).Height(m.height - 6).Render(m.list.View())
