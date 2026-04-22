@@ -455,6 +455,14 @@ func (c *Client) ParticipantCount(ctx context.Context, courseID string) (int, er
 	return ParseParticipantCount(body), nil
 }
 
+func (c *Client) Participants(ctx context.Context, courseID string) ([]Contact, error) {
+	_, body, err := c.get(ctx, "/user/index.php?id="+url.QueryEscape(courseID))
+	if err != nil {
+		return nil, err
+	}
+	return ParseParticipants(body, c.BaseURL.String()), nil
+}
+
 func (c *Client) CourseContents(ctx context.Context, courseID string) (Course, []Section, error) {
 	path := "/course/view.php?id=" + url.QueryEscape(courseID)
 	_, body, err := c.get(ctx, path)

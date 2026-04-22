@@ -18,6 +18,7 @@ const (
 	loadingState state = iota
 	courseListState
 	moduleListState
+	participantListState
 )
 
 type courseItem moodle.Course
@@ -32,6 +33,12 @@ func (i moduleItem) Title() string       { return i.Name }
 func (i moduleItem) Description() string { return i.Type }
 func (i moduleItem) FilterValue() string { return i.Name }
 
+type contactItem moodle.Contact
+
+func (i contactItem) Title() string       { return i.Name }
+func (i contactItem) Description() string { return i.Role }
+func (i contactItem) FilterValue() string { return i.Name }
+
 type statusMsg string
 
 type model struct {
@@ -42,13 +49,14 @@ type model struct {
 	list           list.Model
 	details        viewport.Model
 	selectedCourse moodle.Course
+	filter         string
 	info           string
 	err            error
 }
 
 func NewModel(client *moodle.Client) model {
 	l := list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
-	l.Title = "Courses"
+	l.Title = "Courses (In Progress)"
 	l.SetShowStatusBar(false)
 	l.Styles.Title = TitleStyle
 
@@ -57,6 +65,7 @@ func NewModel(client *moodle.Client) model {
 		state:   loadingState,
 		list:    l,
 		details: viewport.New(0, 0),
+		filter:  "inprogress",
 	}
 }
 
@@ -65,11 +74,11 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) fetchCourses() tea.Msg {
-	courses, err := m.client.Courses(context.Background())
+	courses, err := m.client.CoursesWithOptions(context.Background(), moodle.CourseListOptions{Filter: m.filter})
 	if err != nil {
 		return err
 	}
-	return courses
+	return courses.Courses
 }
 
 func (m model) fetchCourseContents(id string) tea.Cmd {
@@ -79,6 +88,16 @@ func (m model) fetchCourseContents(id string) tea.Cmd {
 			return err
 		}
 		return sections
+	}
+}
+
+func (m model) fetchParticipants(id string) tea.Cmd {
+	return func() tea.Msg {
+		contacts, err := m.client.Participants(context.Background(), id)
+		if err != nil {
+			return err
+		}
+		return contacts
 	}
 }
 
@@ -134,7 +153,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			items[i] = courseItem(c)
 		}
 		m.list.SetItems(items)
-		m.list.Title = "Courses"
+		m.updateListTitle()
 		m.state = courseListState
 		m.info = ""
 
@@ -150,6 +169,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state = moduleListState
 		m.info = ""
 
+	case []moodle.Contact:
+		items := make([]list.Item, len(msg))
+		for i, c := range msg {
+			items[i] = contactItem(c)
+		}
+		m.list.SetItems(items)
+		m.list.Title = "Participants: " + m.selectedCourse.Name
+		m.state = participantListState
+		m.info = ""
+
 	case statusMsg:
 		m.info = string(msg)
 		return m, nil
@@ -163,7 +192,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		case "esc", "h":
-			if m.state == moduleListState {
+			if m.state == moduleListState || m.state == participantListState {
 				m.state = loadingState
 				return m, m.fetchCourses
 			}
@@ -174,6 +203,38 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.state = loadingState
 					return m, m.fetchCourseContents(i.ID)
 				}
+			}
+		case "p":
+			if m.state == courseListState {
+				if i, ok := m.list.SelectedItem().(courseItem); ok {
+					m.selectedCourse = moodle.Course(i)
+					m.state = loadingState
+					return m, m.fetchParticipants(i.ID)
+				}
+			}
+		case "1":
+			if m.state == courseListState {
+				m.filter = "inprogress"
+				m.state = loadingState
+				return m, m.fetchCourses
+			}
+		case "2":
+			if m.state == courseListState {
+				m.filter = "all"
+				m.state = loadingState
+				return m, m.fetchCourses
+			}
+		case "3":
+			if m.state == courseListState {
+				m.filter = "past"
+				m.state = loadingState
+				return m, m.fetchCourses
+			}
+		case "4":
+			if m.state == courseListState {
+				m.filter = "favourites"
+				m.state = loadingState
+				return m, m.fetchCourses
 			}
 		case "d":
 			if m.state == courseListState {
@@ -214,9 +275,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.details.SetContent(details)
 		}
+	} else if m.state == participantListState {
+		if i, ok := m.list.SelectedItem().(contactItem); ok {
+			m.details.SetContent(fmt.Sprintf("Name: %s\nID: %s\nRole: %s\nEmail: %s", i.Name, i.ID, i.Role, i.Email))
+		}
 	}
 
 	return m, tea.Batch(cmds...)
+}
+
+func (m *model) updateListTitle() {
+	switch m.filter {
+	case "inprogress":
+		m.list.Title = "Courses (In Progress)"
+	case "all":
+		m.list.Title = "Courses (All)"
+	case "past":
+		m.list.Title = "Courses (Past)"
+	case "favourites":
+		m.list.Title = "Courses (Starred)"
+	}
 }
 
 func (m model) View() string {
@@ -238,7 +316,7 @@ func (m model) View() string {
 		footer = "\n" + HeaderStyle.Render(m.info)
 	}
 	
-	help := "\n [enter/l] view  [esc/h] back  [d] download  [c] copy link  [q] quit"
+	help := "\n [1-4] filter  [p] participants  [enter/l] view  [esc/h] back  [d] download  [c] copy link  [q] quit"
 	
 	return mainView + footer + help
 }
@@ -247,8 +325,4 @@ func Start(client *moodle.Client) error {
 	p := tea.NewProgram(NewModel(client), tea.WithAltScreen())
 	_, err := p.Run()
 	return err
-}
-
-func SafeName(s string) string {
-	return moodle.SafeName(s)
 }

@@ -164,6 +164,27 @@ func (a *app) courseCmd() *cobra.Command {
 	}
 	links.Flags().Bool("resolve", true, "follow redirects to get the final destination URL")
 
-	cmd.AddCommand(contents, fetch, links)
+	participants := &cobra.Command{
+		Use:   "participants COURSE_ID",
+		Short: "List all participants in a course",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, _, err := a.moodleClient()
+			if err != nil {
+				return err
+			}
+			contacts, err := client.Participants(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			return a.print(contacts, func() {
+				for _, c := range contacts {
+					fmt.Printf("%s\t%s\t%s\t%s\n", c.ID, c.Name, c.Role, c.Email)
+				}
+			})
+		},
+	}
+
+	cmd.AddCommand(contents, fetch, links, participants)
 	return cmd
 }

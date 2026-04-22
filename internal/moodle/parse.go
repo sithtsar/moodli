@@ -4,6 +4,7 @@ import (
 	"html"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -36,6 +37,53 @@ func ParseUserContacts(body string) []string {
 		}
 	}
 	return ids
+}
+
+func ParseParticipants(body, base string) []Contact {
+	seen := map[string]Contact{}
+	// Look for user IDs first
+	for _, m := range userIDRe.FindAllStringSubmatch(body, -1) {
+		id := m[1]
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = Contact{ID: id}
+	}
+
+	// Now try to associate names, roles, and emails by looking at fragments around the ID
+	for id, contact := range seen {
+		// Strict match for ID in the URL to avoid partial matches like 813 matching 81311
+		// We look for id=ID followed by something that isn't a digit, or the end of the URL.
+		pattern := `(?is)<a[^>]*href=["'][^"']*id=` + id + `(?:[^0-9][^"']*|)["'][^>]*>(.*?)</a>`
+		re := regexp.MustCompile(pattern)
+		if m := re.FindStringSubmatch(body); len(m) > 1 {
+			contact.Name = cleanText(m[1])
+		}
+		
+		seen[id] = contact
+	}
+
+	// Fallback: just use ParseUserContacts logic if we found nothing better
+	if len(seen) == 0 {
+		for _, id := range ParseUserContacts(body) {
+			seen[id] = Contact{ID: id, Name: "User " + id}
+		}
+	}
+
+	// Final pass: clean up names
+	for id, c := range seen {
+		if c.Name == "" || strings.Contains(strings.ToLower(c.Name), "icon") {
+			c.Name = "User " + id
+		}
+		seen[id] = c
+	}
+	
+	out := make([]Contact, 0, len(seen))
+	for _, c := range seen {
+		out = append(out, c)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
 }
 
 func ParseContactDetail(body string) Contact {
