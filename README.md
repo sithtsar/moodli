@@ -1,72 +1,47 @@
-# moodli
+# moodli 🎓
 
-`moodli` is a Go CLI for student-facing Moodle sites. It is designed for universities where Moodle sits behind SSO, so it captures an already-legitimate browser session and exposes read/download commands that are easy for humans and AI agents to call.
+> A high-performance Moodle scraper and TUI for modern terminal enthusiasts.
 
-The first implementation is intentionally read-only: courses, course contents, assignments, downloaded files, and NotebookLM-friendly manifests. It does not submit assignments, grade work, bypass SSO, solve CAPTCHA, or store passwords.
+**⚠️ WARNING: Early Alpha Version**
+This project is in early development. APIs, CLI commands, and TUI layouts are subject to change. Use with caution.
 
-## Install From Source
+## 🚀 Features
 
-```sh
-go build ./cmd/moodli
-```
+- **Blazing Fast**: Concurrent scraping and downloads.
+- **Interactive TUI**: Navigate courses, modules, and participants with ease.
+- **Smart Resolve**: Automatically follows redirects for resources (Google Drive, etc.).
+- **Metadata Preview**: Instant file size and type preview via lazy-loading.
+- **Sunset Dark Theme**: Beautiful neon orange and dark grey interface.
 
-## Basic Flow
-
-```sh
-./moodli profile add iitb --url https://moodle.iitb.ac.in
-./moodli auth login --profile iitb
-./moodli auth status --profile iitb --json
-./moodli courses --profile iitb --json
-./moodli course contents 12345 --profile iitb --json
-./moodli assignments --profile iitb --course 12345 --json
-./moodli assignment show 67890 --profile iitb --json
-./moodli export course 12345 --profile iitb --format notebooklm --output ./moodle-export
-```
-
-You can also pass supported Moodle URLs directly:
-
-```sh
-./moodli 'https://moodle.example.edu/course/view.php?id=12345' --json
-./moodli 'https://moodle.example.edu/mod/assign/view.php?id=67890' --json
-```
-
-## Export Output
-
-Course export creates a local folder containing:
-
-- `manifest.json`: structured metadata for the export.
-- Folders per course section containing PDFs, documents, and `links.md` files.
-
-## NotebookLM Integration
-
-You can automate the ingestion of Moodle content into [Google NotebookLM](https://notebooklm.google.com/) using the [notebooklm-mcp-cli](https://github.com/jacob-bd/notebooklm-mcp-cli).
-
-### Step 1: Export Course Content
-```sh
-./moodli course fetch 12345
-```
-
-### Step 2: Pipe to NotebookLM
-After installing the `nlm` tool, you can pipe files and links directly:
+## 🛠 Installation
 
 ```bash
-# 1. Bulk upload all downloaded PDFs and documents
-find ./Course-*-12345 -type f \( -name "*.pdf" -o -name "*.pptx" -o -name "*.docx" \) \
-  | xargs -I {} nlm source add "My Course" --file {}
-
-# 2. Pipe all external course links directly
-./moodli course links 12345 | xargs -I {} nlm source add "My Course" --url {}
+go install github.com/sithtsar/moodli/cmd/moodli@latest
 ```
 
-## Auth Model
+## ⌨️ TUI Keybindings
 
-`moodli auth login` opens a normal browser window with Chrome DevTools automation enabled. You complete the university SSO flow yourself. After Moodle sets `MoodleSession`, `moodli` saves only cookies needed for authenticated HTTP requests.
+- `1-4`: Filter courses (In Progress, All, Past, Starred).
+- `enter / l`: Enter course/module.
+- `esc / h`: Go back.
+- `p`: View participants.
+- `d`: Download course or module.
+- `o`: Open resource in system default viewer.
+- `c`: Copy resolved link to clipboard.
+- `q`: Quit.
 
-Session cookies are stored under the OS user config directory with restrictive file permissions.
+## 🗺 Planned Features
 
-## Current Limitations
+- [ ] **NotebookLM Integration**: Deep integration for exporting structured course content for LLM ingestion.
+- [ ] **Bulk Downloads**: Optimized batch downloading for entire semesters.
+- [ ] **Search**: Global search across all courses and modules.
+- [ ] **Notifications**: Desktop notifications for new assignments or grades.
+- [ ] **Assignment Tracking**: Dashboard for upcoming deadlines.
 
-- Moodle themes vary; scraping fallbacks are best-effort.
-- Moodle Web Services are not yet token-integrated because many university sites do not expose tokens to students.
-- Assignment submission is intentionally not implemented in v1.
-- Live testing against a university Moodle requires a valid user account and compliance with that institution's rules.
+## 📜 License
+
+This project is licensed under the **MIT License**. See `LICENSE` for details.
+
+---
+
+Built with 🧡 using `charmbracelet/bubbletea` and `go`.

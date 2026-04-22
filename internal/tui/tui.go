@@ -386,6 +386,7 @@ func (m model) View() string {
 
 	breadcrumb := m.renderBreadcrumbs()
 
+	var content string
 	if m.state == loadingState {
 		ascii := `
                      _________________
@@ -399,26 +400,30 @@ func (m model) View() string {
                           ''
 `
 		s := fmt.Sprintf("%s\n\n  %s Fetching data from Moodle...\n\n", TitleStyle.Render(ascii), m.spinner.View())
-		return breadcrumb + "\n" + lipgloss.Place(m.width, m.height-2, lipgloss.Center, lipgloss.Center, s)
+		content = lipgloss.Place(m.width, m.height-6, lipgloss.Center, lipgloss.Center, s)
+	} else {
+		leftPane := PaneStyle.Width(m.width/2 - 2).Height(m.height - 8).Render(m.list.View())
+		rightPane := PaneStyle.Width(m.width/2 - 2).Height(m.height - 8).Render(m.details.View())
+		content = lipgloss.JoinHorizontal(lipgloss.Top, leftPane, rightPane)
 	}
-
-	leftPane := PaneStyle.Width(m.width/2 - 2).Height(m.height - 8).Render(m.list.View())
-	rightPane := PaneStyle.Width(m.width/2 - 2).Height(m.height - 8).Render(m.details.View())
-
-	mainView := lipgloss.JoinHorizontal(lipgloss.Top, leftPane, rightPane)
 
 	footer := ""
 	if m.info != "" {
 		footer = "\n" + HeaderStyle.Render(m.info)
 	}
 	help := "\n [1-4] filter  [p] participants  [enter/l] view  [esc/h] back  [d] download  [o] open  [c] copy link  [q] quit"
-	return breadcrumb + "\n" + mainView + footer + help
+	
+	return lipgloss.JoinVertical(lipgloss.Left, breadcrumb, content, footer+help)
 }
 
 func (m model) renderBreadcrumbs() string {
 	var crumbs []string
 
-	// Filter breadcrumb
+	// Base
+	crumbs = append(crumbs, HeaderStyle.Render(" moodli "))
+	crumbs = append(crumbs, lipgloss.NewStyle().Foreground(Grey).Render(" > "))
+
+	// Filter
 	filterName := "In Progress"
 	switch m.filter {
 	case "all":
@@ -428,7 +433,7 @@ func (m model) renderBreadcrumbs() string {
 	case "favourites":
 		filterName = "Starred"
 	}
-	crumbs = append(crumbs, HeaderStyle.Render(" "+filterName+" "))
+	crumbs = append(crumbs, SelectedStyle.Render(filterName))
 
 	if m.state == moduleListState || m.state == participantListState {
 		crumbs = append(crumbs, lipgloss.NewStyle().Foreground(Grey).Render(" > "))
@@ -436,15 +441,23 @@ func (m model) renderBreadcrumbs() string {
 		if name == "" {
 			name = m.selectedCourse.Name
 		}
-		crumbs = append(crumbs, HeaderStyle.Render(" "+name+" "))
+		if len(name) > 20 {
+			name = name[:17] + "..."
+		}
+		crumbs = append(crumbs, SelectedStyle.Render(name))
 	}
 
 	if m.state == participantListState {
 		crumbs = append(crumbs, lipgloss.NewStyle().Foreground(Grey).Render(" > "))
-		crumbs = append(crumbs, HeaderStyle.Render(" Participants "))
+		crumbs = append(crumbs, SelectedStyle.Render("Participants"))
 	}
 
-	return lipgloss.NewStyle().MarginBottom(1).Render(strings.Join(crumbs, ""))
+	return lipgloss.NewStyle().
+		Padding(0, 1).
+		Border(lipgloss.NormalBorder(), false, false, true, false).
+		BorderForeground(Grey).
+		Width(m.width).
+		Render(strings.Join(crumbs, ""))
 }
 
 func Start(client *moodle.Client) error {
