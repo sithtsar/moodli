@@ -130,6 +130,31 @@ func (a *app) courseCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.AddCommand(contents, fetch)
+
+	links := &cobra.Command{
+		Use:   "links COURSE_ID",
+		Short: "List all external links (URLs) in a course",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, _, err := a.moodleClient()
+			if err != nil {
+				return err
+			}
+			_, sections, err := client.CourseContents(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			for _, s := range sections {
+				for _, m := range s.Modules {
+					if m.Type == "url" && m.URL != "" {
+						fmt.Println(m.URL)
+					}
+				}
+			}
+			return nil
+		},
+	}
+
+	cmd.AddCommand(contents, fetch, links)
 	return cmd
 }

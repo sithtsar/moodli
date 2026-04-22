@@ -92,12 +92,6 @@ func (c *Client) ExportCourse(ctx context.Context, courseID, outDir string, onPr
 	if err := writeJSON(filepath.Join(root, "manifest.json"), export); err != nil {
 		return CourseExport{}, err
 	}
-	if err := os.WriteFile(filepath.Join(root, "manifest.md"), []byte(ManifestMarkdown(export)), 0o644); err != nil {
-		return CourseExport{}, err
-	}
-	if err := os.WriteFile(filepath.Join(root, "notebooklm.md"), []byte(NotebookMarkdown(export)), 0o644); err != nil {
-		return CourseExport{}, err
-	}
 	return export, nil
 }
 

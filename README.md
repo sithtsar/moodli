@@ -32,11 +32,10 @@ You can also pass supported Moodle URLs directly:
 
 ## Export Output
 
-Course export creates a local folder containing downloaded files plus:
+Course export creates a local folder containing:
 
-- `manifest.json`: structured data for agents and scripts.
-- `manifest.md`: human-readable course index.
-- `notebooklm.md`: compact context file intended to be uploaded alongside downloaded files to NotebookLM or another LLM tool.
+- `manifest.json`: structured metadata for the export.
+- Folders per course section containing PDFs, documents, and `links.md` files.
 
 ## NotebookLM Integration
 
@@ -48,15 +47,15 @@ You can automate the ingestion of Moodle content into [Google NotebookLM](https:
 ```
 
 ### Step 2: Pipe to NotebookLM
-After installing the `nlm` tool, you can pipe the generated manifest directly:
+After installing the `nlm` tool, you can pipe files and links directly:
 
-```sh
-# Add the master course context
-cat ./Course-*-12345/notebooklm.md | nlm source add "Semester 2: Image Synthesis" --text -
-
-# Bulk upload all downloaded PDFs and documents
+```bash
+# 1. Bulk upload all downloaded PDFs and documents
 find ./Course-*-12345 -type f \( -name "*.pdf" -o -name "*.pptx" -o -name "*.docx" \) \
-  | xargs -I {} nlm source add "Semester 2: Image Synthesis" --file {}
+  | xargs -I {} nlm source add "My Course" --file {}
+
+# 2. Pipe all external course links directly
+./moodli course links 12345 | xargs -I {} nlm source add "My Course" --url {}
 ```
 
 ## Auth Model
