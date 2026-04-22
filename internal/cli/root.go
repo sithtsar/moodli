@@ -24,8 +24,13 @@ type app struct {
 func Execute() error {
 	a := &app{}
 	root := &cobra.Command{
-		Use:           "moodli",
-		Short:         "Agent-friendly CLI for Moodle",
+		Use:   "moodli",
+		Short: "Agent-friendly CLI and TUI for Moodle",
+		Long: `moodli is a high-performance tool for Moodle.
+It features an interactive TUI for human users and a clean JSON-capable CLI for programmatic use by agents and scripts.
+
+If run without arguments, it enters the interactive TUI.
+If a Moodle URL is provided as an argument, it attempts to fetch details for that URL.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.ArbitraryArgs,

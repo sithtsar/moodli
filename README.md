@@ -11,6 +11,7 @@ This project is in early development. APIs, CLI commands, and TUI layouts are su
 - **Interactive TUI**: Navigate courses, modules, and participants with ease.
 - **Smart Resolve**: Automatically follows redirects for resources (Google Drive, etc.).
 - **Metadata Preview**: Instant file size and type preview via lazy-loading.
+- **Agent-Friendly CLI**: Designed for both humans and LLM agents with clean JSON output.
 - **Sunset Dark Theme**: Beautiful neon orange and dark grey interface.
 
 ## 🛠 Installation
@@ -19,7 +20,15 @@ This project is in early development. APIs, CLI commands, and TUI layouts are su
 go install github.com/sithtsar/moodli/cmd/moodli@latest
 ```
 
-## ⌨️ TUI Keybindings
+## 🖥 TUI Usage
+
+Simply run `moodli` without arguments to enter the interactive mode.
+
+```bash
+moodli
+```
+
+### Keybindings
 
 - `1-4`: Filter courses (In Progress, All, Past, Starred).
 - `enter / l`: Enter course/module.
@@ -30,13 +39,51 @@ go install github.com/sithtsar/moodli/cmd/moodli@latest
 - `c`: Copy resolved link to clipboard.
 - `q`: Quit.
 
-## 🗺 Planned Features
+## 🤖 CLI Usage (Programmatic)
 
+`moodli` is designed to be used programmatically by LLM agents or scripts. Use the `--json` flag for machine-readable output.
+
+### Common Commands
+
+- **Authentication**:
+  ```bash
+  moodli auth login          # Interactive login
+  moodli auth status         # Check current session
+  ```
+
+- **Listing Courses**:
+  ```bash
+  moodli courses             # List courses (default: in-progress)
+  moodli courses --json      # machine-readable list
+  ```
+
+- **Course Content**:
+  ```bash
+  moodli course contents <ID>       # List sections and modules
+  moodli course fetch <ID>          # Download all course content
+  moodli course links <ID>          # Extract all external URLs
+  moodli course participants <ID>   # List course members
+  ```
+
+- **Assignments**:
+  ```bash
+  moodli assignments         # List upcoming assignments across all courses
+  moodli assignment <ID>     # Show details for a specific assignment
+  ```
+
+### Smart Routing
+You can pass any Moodle URL directly to `moodli` to quickly fetch details:
+```bash
+moodli https://moodle.iitb.ac.in/course/view.php?id=1234
+```
+
+## 🗺 Roadmap & Planned Features
+
+- [ ] **Assignment Uploads**: Submit assignments directly from the CLI/TUI.
 - [ ] **NotebookLM Integration**: Deep integration for exporting structured course content for LLM ingestion.
 - [ ] **Bulk Downloads**: Optimized batch downloading for entire semesters.
 - [ ] **Search**: Global search across all courses and modules.
 - [ ] **Notifications**: Desktop notifications for new assignments or grades.
-- [ ] **Assignment Tracking**: Dashboard for upcoming deadlines.
 
 ## 📜 License
 
