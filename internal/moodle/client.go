@@ -468,6 +468,7 @@ func (c *Client) CourseContents(ctx context.Context, courseID string) (Course, [
 	if course.Name == "" {
 		course.Name = "course-" + courseID
 	}
+	course.Contacts, _ = c.Contacts(ctx, courseID)
 	return course, ParseSections(body, c.BaseURL.String()), nil
 }
 
@@ -513,6 +514,27 @@ func (c *Client) Assignments(ctx context.Context, courseID string) ([]Assignment
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
+}
+
+func (c *Client) Contacts(ctx context.Context, courseID string) ([]Contact, error) {
+	_, body, err := c.get(ctx, "/course/view.php?id="+url.QueryEscape(courseID))
+	if err != nil {
+		return nil, err
+	}
+	ids := ParseUserContacts(body)
+	contacts := []Contact{}
+	for _, id := range ids {
+		_, pbody, err := c.get(ctx, fmt.Sprintf("/user/view.php?id=%s&course=%s", id, courseID))
+		if err != nil {
+			continue
+		}
+		contact := ParseContactDetail(pbody)
+		if contact.Name != "" {
+			contact.ID = id
+			contacts = append(contacts, contact)
+		}
+	}
+	return contacts, nil
 }
 
 func (c *Client) Assignment(ctx context.Context, idOrURL string) (Assignment, error) {

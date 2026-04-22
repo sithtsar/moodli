@@ -99,35 +99,22 @@ func (a *app) courseCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if !a.jsonOut {
+				fmt.Printf("Discovering content for %s...\n", args[0])
+			}
+
+			total, _ := client.Discovery(cmd.Context(), args[0])
+
+			var exp moodle.CourseExport
 			if a.jsonOut {
-				exp, err := client.ExportCourse(cmd.Context(), args[0], a.outDir, nil)
+				var err error
+				exp, err = client.ExportCourse(cmd.Context(), args[0], a.outDir, nil)
 				if err != nil {
 					return err
 				}
 				return output.JSON(os.Stdout, exp)
 			}
 
-			// For TUI, we first need to get the count of files to download
-			// But ExportCourse does discovery and download in one go.
-			// Let's modify ExportCourse slightly or just discovery first.
-			// To keep it simple, we'll just discovery sections and assignments.
-			_, sections, _ := client.CourseContents(cmd.Context(), args[0])
-			assignments, _ := client.Assignments(cmd.Context(), args[0])
-			total := 0
-			for _, s := range sections {
-				for _, m := range s.Modules {
-					if len(m.Contents) > 0 {
-						total += len(m.Contents)
-					} else if m.Type == "resource" || m.Type == "file" {
-						total++
-					}
-				}
-			}
-			for _, a := range assignments {
-				total += len(a.Files)
-			}
-
-			var exp moodle.CourseExport
 			err = output.DownloadWithProgress(total, func(updates chan moodle.DownloadProgress) error {
 				onProgress := func(p moodle.DownloadProgress) {
 					updates <- p

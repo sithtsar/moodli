@@ -60,7 +60,7 @@ func (m ProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			progressCmd = m.progress.SetPercent(pct)
 		}
 
-		if m.count >= m.total && m.total > 0 {
+		if m.total <= 0 || (m.count >= m.total) {
 			m.quitting = true
 			return m, tea.Sequence(progressCmd, tea.Quit)
 		}
@@ -78,23 +78,40 @@ func (m ProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m ProgressModel) View() string {
-	if m.quitting {
-		return doneStyle(fmt.Sprintf("\nDownloaded %d files.\n", m.count))
-	}
+	var status string
+	var progressStr string
 
-	var name string
-	if m.current.Name != "" {
-		name = m.current.Name
-		if len(name) > 30 {
-			name = name[:27] + "..."
+	if m.quitting {
+		if m.total == 0 {
+			return doneStyle("\nNo files found to download.\n")
+		}
+		status = doneStyle(fmt.Sprintf("Downloaded %d files.", m.count))
+	} else {
+		var name string
+		if m.current.Name != "" {
+			name = m.current.Name
+			if len(name) > 30 {
+				name = name[:27] + "..."
+			}
+		}
+
+		if m.total > 0 {
+			status = fmt.Sprintf("Downloading %d/%d: %s", m.count+1, m.total, name)
+		} else {
+			status = "Discovering and downloading content..."
 		}
 	}
 
-	progressStr := m.progress.View()
-	
-	status := fmt.Sprintf("Downloading %d/%d: %s", m.count+1, m.total, name)
-	
-	return "\n" + status + "\n" + progressStr + "\n\n" + helpStyle("Press Ctrl+C to cancel")
+	if m.total > 0 {
+		progressStr = "\n" + m.progress.View()
+	}
+
+	help := ""
+	if !m.quitting {
+		help = "\n\n" + helpStyle("Press Ctrl+C to cancel")
+	}
+
+	return "\n" + status + progressStr + help
 }
 
 func waitForUpdate(sub chan moodle.DownloadProgress) tea.Cmd {

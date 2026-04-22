@@ -3,17 +3,25 @@ package moodle
 import "time"
 
 type Course struct {
-	ID             string   `json:"id"`
-	Name           string   `json:"name"`
-	URL            string   `json:"url"`
-	Short          string   `json:"short,omitempty"`
-	Category       string   `json:"category,omitempty"`
-	Classification string   `json:"classification,omitempty"`
-	Summary        string   `json:"summary,omitempty"`
-	Progress       *int     `json:"progress,omitempty"`
-	LastAccessed   int64    `json:"last_accessed,omitempty"`
-	Teachers       []string `json:"teachers,omitempty"`
-	Participants   int      `json:"participants,omitempty"`
+	ID             string    `json:"id"`
+	Name           string    `json:"name"`
+	URL            string    `json:"url"`
+	Short          string    `json:"short,omitempty"`
+	Category       string    `json:"category,omitempty"`
+	Classification string    `json:"classification,omitempty"`
+	Summary        string    `json:"summary,omitempty"`
+	Progress       *int      `json:"progress,omitempty"`
+	LastAccessed   int64     `json:"last_accessed,omitempty"`
+	Teachers       []string  `json:"teachers,omitempty"` // Legacy, kept for compat
+	Contacts       []Contact `json:"contacts,omitempty"`
+	Participants   int       `json:"participants,omitempty"`
+}
+
+type Contact struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email,omitempty"`
+	Role  string `json:"role,omitempty"`
 }
 
 type Section struct {

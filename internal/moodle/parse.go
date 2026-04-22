@@ -14,11 +14,66 @@ var (
 	courseIDRe   = regexp.MustCompile(`(?i)/course/view\.php\?id=([0-9]+)`)
 	assignIDRe   = regexp.MustCompile(`(?i)/mod/assign/view\.php\?id=([0-9]+)`)
 	moduleIDRe   = regexp.MustCompile(`(?i)/(?:mod/([^/]+)/view\.php|course/view\.php)\?id=([0-9]+)`)
+	userIDRe     = regexp.MustCompile(`(?i)/user/view\.php\?id=([0-9]+)`)
+	emailRe      = regexp.MustCompile(`(?i)mailto:([^"']+)`)
+	emailAltRe   = regexp.MustCompile(`(?is)prof-user-email["'][^>]*>(.*?)<`)
+	emailInputRe = regexp.MustCompile(`(?is)id=['"]standard_email['"][^>]*value=['"]([^'"]+)['"]`)
+	roleRe       = regexp.MustCompile(`(?is)<dt[^>]*>Roles</dt>\s*<dd[^>]*>(.*?)</dd>`)
 	fileLinkHint = regexp.MustCompile(`(?i)(pluginfile\.php|forcedownload=1|\.(pdf|docx?|pptx?|xlsx?|zip|txt|md|csv|png|jpe?g|html?)(\?|$))`)
 	sesskeyRe    = regexp.MustCompile(`(?is)(?:sesskey["']?\s*[:=]\s*["']|name=["']sesskey["']\s+value=["'])([A-Za-z0-9]+)`)
 	countRe      = regexp.MustCompile(`(?i)([0-9][0-9,]*)\s+(?:participants?|users?)`)
 	methodRe     = regexp.MustCompile(`(?is)["']methodname["']\s*:\s*["']([^"']*course[^"']*)["']`)
 )
+
+func ParseUserContacts(body string) []string {
+	seen := map[string]bool{}
+	ids := []string{}
+	for _, m := range userIDRe.FindAllStringSubmatch(body, -1) {
+		id := m[1]
+		if !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+func ParseContactDetail(body string) Contact {
+	c := Contact{}
+	if title := firstTitle(body); title != "" {
+		// Title is often "Course: Personal profile: Name | Moodle"
+		parts := strings.Split(title, ":")
+		if len(parts) > 0 {
+			c.Name = cleanText(parts[len(parts)-1])
+		}
+	}
+	if m := emailRe.FindStringSubmatch(body); len(m) > 1 {
+		c.Email = decodeEmail(m[1])
+	}
+	if c.Email == "" {
+		if m := emailAltRe.FindStringSubmatch(body); len(m) > 1 {
+			c.Email = cleanText(m[1])
+		}
+	}
+	if c.Email == "" {
+		if m := emailInputRe.FindStringSubmatch(body); len(m) > 1 {
+			c.Email = cleanText(m[1])
+		}
+	}
+	if m := roleRe.FindStringSubmatch(body); len(m) > 1 {
+		c.Role = cleanText(m[1])
+	}
+	return c
+}
+
+func decodeEmail(s string) string {
+	// Moodle often encodes emails like &#109;&#97;... or with URL escaping
+	s = html.UnescapeString(s)
+	if u, err := url.QueryUnescape(s); err == nil {
+		return u
+	}
+	return s
+}
 
 func ParseCourses(body, base string) []Course {
 	seen := map[string]Course{}

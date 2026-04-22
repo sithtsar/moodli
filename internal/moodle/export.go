@@ -34,7 +34,11 @@ func (c *Client) ExportCourse(ctx context.Context, courseID, outDir string, onPr
 		if err := os.MkdirAll(sectionDir, 0o755); err != nil {
 			return CourseExport{}, err
 		}
+		var links []string
 		for mi, module := range section.Modules {
+			if module.Type == "url" {
+				links = append(links, fmt.Sprintf("- [%s](%s)", module.Name, module.URL))
+			}
 			items := module.Contents
 			if len(items) == 0 && (module.Type == "resource" || module.Type == "file") {
 				items = []File{{Name: module.Name, URL: module.URL}}
@@ -48,22 +52,41 @@ func (c *Client) ExportCourse(ctx context.Context, courseID, outDir string, onPr
 				export.Files = append(export.Files, meta)
 			}
 		}
+		if len(links) > 0 {
+			_ = os.WriteFile(filepath.Join(sectionDir, "links.md"), []byte("# External Links\n\n"+strings.Join(links, "\n")+"\n"), 0o644)
+		}
 	}
 	for _, a := range assignments {
-		if len(a.Files) == 0 {
+		// Assignments from c.Assignments() don't have Files populated.
+		// We need to fetch the detail page.
+		detail, err := c.Assignment(ctx, a.URL)
+		if err != nil {
+			if onProgress != nil {
+				onProgress(DownloadProgress{URL: a.URL, Name: a.Name, Done: true, Error: err})
+			}
 			continue
 		}
-		adir := filepath.Join(root, "assignments", SafeName(a.Name+"-"+a.ID))
+		if len(detail.Files) == 0 {
+			if onProgress != nil {
+				onProgress(DownloadProgress{URL: a.URL, Name: a.Name, Done: true})
+			}
+			continue
+		}
+		adir := filepath.Join(root, "assignments", SafeName(detail.Name+"-"+detail.ID))
 		if err := os.MkdirAll(adir, 0o755); err != nil {
 			return CourseExport{}, err
 		}
-		for _, f := range a.Files {
-			local, meta, err := c.download(ctx, f.URL, adir, f.Name, onProgress)
+		for _, f := range detail.Files {
+			// We don't pass onProgress here because we already counted the assignment as 1 item in total
+			local, meta, err := c.download(ctx, f.URL, adir, f.Name, nil)
 			if err != nil {
 				continue
 			}
 			meta.LocalPath = local
 			export.Files = append(export.Files, meta)
+		}
+		if onProgress != nil {
+			onProgress(DownloadProgress{URL: a.URL, Name: a.Name, Done: true})
 		}
 	}
 	if err := writeJSON(filepath.Join(root, "manifest.json"), export); err != nil {
@@ -205,6 +228,17 @@ func SafeName(s string) string {
 func ManifestMarkdown(e CourseExport) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s\n\nSource: %s\n\nExported: %s\n\n", e.Course.Name, e.Course.URL, e.ExportedAt.Format(time.RFC3339))
+	if len(e.Course.Contacts) > 0 {
+		fmt.Fprintln(&b, "## Contacts")
+		for _, c := range e.Course.Contacts {
+			role := c.Role
+			if role == "" {
+				role = "Contact"
+			}
+			fmt.Fprintf(&b, "- **%s** (%s): [%s](mailto:%s)\n", c.Name, role, c.Email, c.Email)
+		}
+		fmt.Fprintln(&b)
+	}
 	fmt.Fprintln(&b, "## Sections")
 	for _, s := range e.Sections {
 		fmt.Fprintf(&b, "- %s\n", s.Name)
@@ -231,6 +265,15 @@ func NotebookMarkdown(e CourseExport) string {
 	fmt.Fprintf(&b, "# NotebookLM Import: %s\n\n", e.Course.Name)
 	fmt.Fprintln(&b, "Use this file as the overview/index for the downloaded Moodle materials.")
 	fmt.Fprintf(&b, "\nCourse URL: %s\n\n", e.Course.URL)
+
+	if len(e.Course.Contacts) > 0 {
+		fmt.Fprintln(&b, "## Course Instructors and TAs")
+		for _, c := range e.Course.Contacts {
+			fmt.Fprintf(&b, "- %s (%s): %s\n", c.Name, c.Role, c.Email)
+		}
+		fmt.Fprintln(&b)
+	}
+
 	fmt.Fprintln(&b, "## High Priority Assignment Context")
 	for _, a := range e.Assignments {
 		fmt.Fprintf(&b, "- %s", a.Name)

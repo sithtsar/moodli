@@ -25,32 +25,22 @@ func (a *app) exportCmd() *cobra.Command {
 				return err
 			}
 
+			if !a.jsonOut {
+				fmt.Printf("Discovering content for %s...\n", args[0])
+			}
+
+			total, _ := client.Discovery(cmd.Context(), args[0])
+
+			var exp moodle.CourseExport
 			if a.jsonOut {
-				exp, err := client.ExportCourse(cmd.Context(), args[0], a.outDir, nil)
+				var err error
+				exp, err = client.ExportCourse(cmd.Context(), args[0], a.outDir, nil)
 				if err != nil {
 					return err
 				}
 				return output.JSON(os.Stdout, exp)
 			}
 
-			// Discovery
-			_, sections, _ := client.CourseContents(cmd.Context(), args[0])
-			assignments, _ := client.Assignments(cmd.Context(), args[0])
-			total := 0
-			for _, s := range sections {
-				for _, m := range s.Modules {
-					if len(m.Contents) > 0 {
-						total += len(m.Contents)
-					} else if m.Type == "resource" || m.Type == "file" {
-						total++
-					}
-				}
-			}
-			for _, a := range assignments {
-				total += len(a.Files)
-			}
-
-			var exp moodle.CourseExport
 			err = output.DownloadWithProgress(total, func(updates chan moodle.DownloadProgress) error {
 				var fetchErr error
 				exp, fetchErr = client.ExportCourse(cmd.Context(), args[0], a.outDir, func(p moodle.DownloadProgress) {

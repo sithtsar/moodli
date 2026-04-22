@@ -71,8 +71,10 @@ func (a *app) assignmentCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			var assignment moodle.Assignment
 			if a.jsonOut {
-				assignment, err := client.ExportAssignment(cmd.Context(), args[0], a.outDir, nil)
+				var err error
+				assignment, err = client.ExportAssignment(cmd.Context(), args[0], a.outDir, nil)
 				if err != nil {
 					return err
 				}
@@ -86,7 +88,6 @@ func (a *app) assignmentCmd() *cobra.Command {
 			}
 			total := len(assignmentDetail.Files)
 
-			var assignment moodle.Assignment
 			err = output.DownloadWithProgress(total, func(updates chan moodle.DownloadProgress) error {
 				onProgress := func(p moodle.DownloadProgress) {
 					updates <- p
