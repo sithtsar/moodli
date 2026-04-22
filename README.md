@@ -38,6 +38,27 @@ Course export creates a local folder containing downloaded files plus:
 - `manifest.md`: human-readable course index.
 - `notebooklm.md`: compact context file intended to be uploaded alongside downloaded files to NotebookLM or another LLM tool.
 
+## NotebookLM Integration
+
+You can automate the ingestion of Moodle content into [Google NotebookLM](https://notebooklm.google.com/) using the [notebooklm-mcp-cli](https://github.com/jacob-bd/notebooklm-mcp-cli).
+
+### Step 1: Export Course Content
+```sh
+./moodli course fetch 12345
+```
+
+### Step 2: Pipe to NotebookLM
+After installing the `nlm` tool, you can pipe the generated manifest directly:
+
+```sh
+# Add the master course context
+cat ./Course-*-12345/notebooklm.md | nlm source add "Semester 2: Image Synthesis" --text -
+
+# Bulk upload all downloaded PDFs and documents
+find ./Course-*-12345 -type f \( -name "*.pdf" -o -name "*.pptx" -o -name "*.docx" \) \
+  | xargs -I {} nlm source add "Semester 2: Image Synthesis" --file {}
+```
+
 ## Auth Model
 
 `moodli auth login` opens a normal browser window with Chrome DevTools automation enabled. You complete the university SSO flow yourself. After Moodle sets `MoodleSession`, `moodli` saves only cookies needed for authenticated HTTP requests.
