@@ -41,6 +41,16 @@ func (i contactItem) FilterValue() string { return i.Name }
 
 type statusMsg string
 
+type courseContentMsg struct {
+	courseID string
+	sections []moodle.Section
+}
+
+type participantListMsg struct {
+	courseID     string
+	participants []moodle.Contact
+}
+
 type model struct {
 	client         *moodle.Client
 	state          state
@@ -96,7 +106,7 @@ func (m model) fetchCourseContents(id string) tea.Cmd {
 		if err != nil {
 			return err
 		}
-		return sections
+		return courseContentMsg{courseID: id, sections: sections}
 	}
 }
 
@@ -106,7 +116,7 @@ func (m model) fetchParticipants(id string) tea.Cmd {
 		if err != nil {
 			return err
 		}
-		return contacts
+		return participantListMsg{courseID: id, participants: contacts}
 	}
 }
 
@@ -166,33 +176,35 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state = courseListState
 		m.info = ""
 
-	case []moodle.Section:
-		if m.selectedCourse.ID != "" {
-			m.courseCache[m.selectedCourse.ID] = msg
-		}
-		var items []list.Item
-		for _, s := range msg {
-			for _, mod := range s.Modules {
-				items = append(items, moduleItem(mod))
+	case courseContentMsg:
+		m.courseCache[msg.courseID] = msg.sections
+		// Only transition if we are actually waiting for THIS course's contents
+		if m.state == loadingState && m.selectedCourse.ID == msg.courseID {
+			var items []list.Item
+			for _, s := range msg.sections {
+				for _, mod := range s.Modules {
+					items = append(items, moduleItem(mod))
+				}
 			}
+			m.list.SetItems(items)
+			m.list.Title = m.selectedCourse.Name
+			m.state = moduleListState
+			m.info = ""
 		}
-		m.list.SetItems(items)
-		m.list.Title = m.selectedCourse.Name
-		m.state = moduleListState
-		m.info = ""
 
-	case []moodle.Contact:
-		if m.selectedCourse.ID != "" {
-			m.participantCache[m.selectedCourse.ID] = msg
+	case participantListMsg:
+		m.participantCache[msg.courseID] = msg.participants
+		// Only transition if we are actually waiting for THIS course's participants
+		if m.state == loadingState && m.selectedCourse.ID == msg.courseID {
+			items := make([]list.Item, len(msg.participants))
+			for i, c := range msg.participants {
+				items[i] = contactItem(c)
+			}
+			m.list.SetItems(items)
+			m.list.Title = "Participants: " + m.selectedCourse.Name
+			m.state = participantListState
+			m.info = ""
 		}
-		items := make([]list.Item, len(msg))
-		for i, c := range msg {
-			items[i] = contactItem(c)
-		}
-		m.list.SetItems(items)
-		m.list.Title = "Participants: " + m.selectedCourse.Name
-		m.state = participantListState
-		m.info = ""
 
 	case moodle.Contact:
 		m.detailCache[msg.ID] = msg
@@ -209,7 +221,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case error:
-		m.err = msg
+		// If it's a prefetch error, don't show it unless we're in loading state for that course
+		if m.state == loadingState {
+			m.err = msg
+		}
 		return m, nil
 
 	case tea.KeyMsg:
@@ -218,7 +233,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "esc", "h":
 			if m.state == moduleListState || m.state == participantListState {
-				m.state = courseListState
+				m.state = loadingState
 				return m, m.fetchCourses
 			}
 		case "enter", "l":
@@ -226,7 +241,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if i, ok := m.list.SelectedItem().(courseItem); ok {
 					m.selectedCourse = moodle.Course(i)
 					if cached, ok := m.courseCache[i.ID]; ok {
-						return m.Update([]moodle.Section(cached))
+						return m.Update(courseContentMsg{courseID: i.ID, sections: cached})
 					}
 					m.state = loadingState
 					return m, m.fetchCourseContents(i.ID)
@@ -237,7 +252,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if i, ok := m.list.SelectedItem().(courseItem); ok {
 					m.selectedCourse = moodle.Course(i)
 					if cached, ok := m.participantCache[i.ID]; ok {
-						return m.Update([]moodle.Contact(cached))
+						return m.Update(participantListMsg{courseID: i.ID, participants: cached})
 					}
 					m.state = loadingState
 					return m, m.fetchParticipants(i.ID)
