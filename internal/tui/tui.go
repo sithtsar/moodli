@@ -3,6 +3,8 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os/exec"
+	"runtime"
 
 	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/list"
@@ -64,7 +66,10 @@ type model struct {
 	filter         string
 	info           string
 	fetchingDetail string
+	fetchingMeta   string
 	err            error
+
+	metaCache map[string]moodle.File
 }
 
 func NewModel(client *moodle.Client) model {
@@ -78,12 +83,13 @@ func NewModel(client *moodle.Client) model {
 	s.Style = lipgloss.NewStyle().Foreground(Orange)
 
 	return model{
-		client:  client,
-		state:   loadingState,
-		list:    l,
-		details: viewport.New(0, 0),
-		spinner: s,
-		filter:  "inprogress",
+		client:    client,
+		state:     loadingState,
+		list:      l,
+		details:   viewport.New(0, 0),
+		spinner:   s,
+		filter:    "inprogress",
+		metaCache: make(map[string]moodle.File),
 	}
 }
 
@@ -126,6 +132,16 @@ func (m model) fetchParticipantDetail(id string) tea.Cmd {
 			return err
 		}
 		return contact
+	}
+}
+
+func (m model) fetchFileMeta(url string) tea.Cmd {
+	return func() tea.Msg {
+		meta, err := m.client.FileMeta(context.Background(), url)
+		if err != nil {
+			return err
+		}
+		return meta
 	}
 }
 
@@ -224,6 +240,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+	case moodle.File:
+		m.fetchingMeta = ""
+		m.metaCache[msg.URL] = msg
+
 	case statusMsg:
 		m.info = string(msg)
 		return m, nil
@@ -283,6 +303,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, m.copyLink(i.URL)
 				}
 			}
+		case "o":
+			if m.state == moduleListState {
+				if i, ok := m.list.SelectedItem().(moduleItem); ok && i.URL != "" {
+					m.info = "Opening resource..."
+					go openURL(i.URL)
+				}
+			}
 		}
 	}
 
@@ -298,6 +325,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	} else if m.state == moduleListState {
 		if i, ok := m.list.SelectedItem().(moduleItem); ok {
 			details := fmt.Sprintf("Module: %s\nType: %s\nURL: %s\n", i.Name, i.Type, i.URL)
+			if i.Type == "resource" || i.Type == "file" {
+				if meta, ok := m.metaCache[i.URL]; ok {
+					details += fmt.Sprintf("\nSize: %s\nType: %s", formatSize(meta.Size), meta.ContentType)
+				} else if m.fetchingMeta != i.URL {
+					m.fetchingMeta = i.URL
+					cmds = append(cmds, m.fetchFileMeta(i.URL))
+				}
+			}
 			if i.Type == "assign" {
 				details += "\nAssignment details will be fetched during download."
 			}
@@ -359,7 +394,7 @@ func (m model) View() string {
 	if m.info != "" {
 		footer = "\n" + HeaderStyle.Render(m.info)
 	}
-	help := "\n [1-4] filter  [p] participants  [enter/l] view  [esc/h] back  [d] download  [c] copy link  [q] quit"
+	help := "\n [1-4] filter  [p] participants  [enter/l] view  [esc/h] back  [d] download  [o] open  [c] copy link  [q] quit"
 	return mainView + footer + help
 }
 
@@ -367,4 +402,32 @@ func Start(client *moodle.Client) error {
 	p := tea.NewProgram(NewModel(client), tea.WithAltScreen())
 	_, err := p.Run()
 	return err
+}
+
+func formatSize(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("% d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
+}
+
+func openURL(url string) {
+	var err error
+	switch runtime.GOOS {
+	case "linux":
+		err = exec.Command("xdg-open", url).Start()
+	case "windows":
+		err = exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
+	case "darwin":
+		err = exec.Command("open", url).Start()
+	default:
+		err = fmt.Errorf("unsupported platform")
+	}
+	_ = err
 }

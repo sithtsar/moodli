@@ -570,6 +570,24 @@ func (c *Client) ResolveURL(ctx context.Context, moodleURL string) (string, erro
 	return resp.Request.URL.String(), nil
 }
 
+func (c *Client) FileMeta(ctx context.Context, rawURL string) (File, error) {
+	req, err := http.NewRequestWithContext(ctx, "HEAD", rawURL, nil)
+	if err != nil {
+		return File{}, err
+	}
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return File{}, err
+	}
+	defer resp.Body.Close()
+
+	return File{
+		URL:         resp.Request.URL.String(),
+		ContentType: resp.Header.Get("Content-Type"),
+		Size:        resp.ContentLength,
+	}, nil
+}
+
 func (c *Client) Assignment(ctx context.Context, idOrURL string) (Assignment, error) {
 	ref := idOrURL
 	if !strings.Contains(idOrURL, "/") {
